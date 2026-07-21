@@ -1,0 +1,63 @@
+import os
+import pandas as pd
+import yfinance as yf
+import ta
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🔥 Bienvenue sur Trade Sight AI!\n"
+        "Commandes :\n"
+        "/signal EURUSD - Analyse forex\n"
+        "/signal BTC-USD - Analyse crypto\n"
+        "/signal AAPL - Analyse action"
+    )
+
+async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Utilise : /signal BTC-USD")
+        return
+    
+    symbol = context.args[0].upper()
+    await update.message.reply_text(f"📊 Analyse de {symbol} en cours...")
+    
+    try:
+        data = yf.download(symbol, period="7d", interval="1h")
+        data['RSI'] = ta.momentum.RSIIndicator(data['Close']).rsi()
+        data['EMA20'] = ta.trend.EMAIndicator(data['Close'], 20).ema_indicator()
+        data['EMA50'] = ta.trend.EMAIndicator(data['Close'], 50).ema_indicator()
+        
+        last = data.iloc[-1]
+        
+        if last['RSI'] < 30 and last['EMA20'] > last['EMA50']:
+            signal_text = "🟢 SIGNAL ACHAT"
+        elif last['RSI'] > 70 and last['EMA20'] < last['EMA50']:
+            signal_text = "🔴 SIGNAL VENTE"
+        else:
+            signal_text = "🟡 ATTENDRE"
+            
+        msg = f"""
+{signal_text}
+Pair: {symbol}
+Prix: {last['Close']:.4f}
+RSI: {last['RSI']:.2f}
+EMA20: {last['EMA20']:.4f}
+EMA50: {last['EMA50']:.4f}
+"""
+        await update.message.reply_text(msg)
+        
+    except Exception as e:
+        await update.message.reply_text(f"Erreur: {e}")
+
+def main():
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("signal", signal))
+    print("Bot Trade Sight AI lancé...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
